@@ -1,0 +1,2535 @@
+
+<html>
+
+<head>
+<title>Frogger</title>
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+
+    
+<link rel="SHORTCUT ICON" href="image/frog.png" />
+
+<style type="text/css">
+    #menu {
+		visibility:hidden;
+        position:absolute;
+        top:10%;
+        left:10%;
+		width:100%;
+		height:90%;
+        font-size:2em;
+        color: black;
+    }
+	
+	#image{
+		position:absolute;
+		top:1%;
+        left:5%;
+		width:70%;
+		height:60%;
+	}
+	
+	#keys{
+		position:absolute;
+		top:60%;
+        left:60%;
+		width:20%;
+		height:40%;
+	}
+	
+	#gameOver {
+        visibility:hidden;
+        position:absolute;
+        top:10%;
+        left:10%;
+		width:100%;
+		height:90%;
+    }
+	
+	#gameOverImage{
+		position:absolute;
+		top:1%;
+        left:5%;
+		width:70%;
+		height:80%;
+	}
+	
+	#playAgain{
+		position:absolute;
+        top:80%;
+        left:30%;
+		width:15%;
+		height:15%;
+		cursor:pointer;
+	}
+		
+	#play{
+		position:absolute;
+        top:70%;
+        left:35%;
+		cursor:pointer;
+	}
+	
+	#controls{
+		position:absolute;
+        top:75%;
+        left:80%;
+		width:40%;
+		height:40%;
+	}
+	
+	#lives {
+        position:absolute;
+        top:5%;
+        left:5%;
+        font-size:2em;
+        color: white;
+		visibility:hidden;
+    }
+	
+	#points {
+        position:absolute;
+        top:10%;
+        left:5%;
+        font-size:2em;
+        color: white;
+		visibility:hidden;
+    }
+	
+	#loadGame {
+        position:absolute;
+        top:10%;
+        left:45%;
+        font-size:2em;
+        color: white;
+    }
+	
+	#menuMobile {
+		visibility:hidden;
+        position:absolute;
+        top:1%;
+        left:1%;
+		width:100%;
+		height:100%;
+    }
+	
+	
+	#imageMobile{
+		position:absolute;
+		top:1%;
+        left:7%;
+		width:80%;
+		height:60%;
+    }
+	
+	#playMobile{
+		position:absolute;
+        top:70%;
+        left:25%;
+		cursor:pointer;
+	}
+	
+	#demoMobile{
+		position:absolute;
+        top:70%;
+        left:55%;
+		cursor:pointer;
+	}
+	
+	
+	
+	#upMobileControl{
+		opacity:0.7;
+		visibility:hidden;
+		position:absolute;
+        top:70%;
+        left:10%;
+		cursor:pointer;
+	}
+	
+	#downMobileControl{
+		opacity:0.7;
+		visibility:hidden;
+		position:absolute;
+        top:80%;
+        left:10%;
+		cursor:pointer;
+	}
+	
+	#leftMobileControl{
+		opacity:0.7;
+		visibility:hidden;
+		position:absolute;
+        top:75%;
+        left:80%;
+		cursor:pointer;
+	}
+	
+	#rightMobileControl{
+		opacity:0.7;
+		visibility:hidden;
+		position:absolute;
+        top:75%;
+        left:90%;
+		cursor:pointer;
+	}
+	
+	
+</style>
+	
+	<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+    <script type="text/javascript" src="scripts\glMatrix-0.9.5.min.js"></script>
+    <script type="text/javascript" src="scripts\webgl-utils.js"></script>
+    <script id="objects" type="text/javascript" src="scripts\objects.js"></script>
+	
+    <script type="text/javascript" src="scripts\detectMobileBrowser.js"></script>
+
+<script id="shader-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+    varying vec3 vTransformedNormal;
+    varying vec4 vPosition;
+
+    uniform float uAlpha;
+
+    uniform sampler2D uSampler;
+	
+	uniform float uMaterialShininess;
+	
+	uniform vec3 spotLightDirection;
+	
+	uniform vec3 uAmbientColor;
+    uniform vec3 uPointLightingLocation;
+    uniform vec3 uPointLightingSpecularColor;
+    uniform vec3 uPointLightingDiffuseColor;
+
+    void main(void) {
+		vec3 lightWeighting;
+		
+		vec3 lightDirection = normalize(uPointLightingLocation - vPosition.xyz);
+        vec3 normal = normalize(vTransformedNormal);
+	
+		float specularLightWeighting = 0.0;
+		vec3 eyeDirection = normalize(-vPosition.xyz);
+        vec3 reflectionDirection = reflect(-lightDirection, normal);
+        specularLightWeighting = pow(max(dot(reflectionDirection, eyeDirection), 0.0), uMaterialShininess);
+	
+	
+		float diffuseLightWeighting = max(dot(normal, lightDirection), 0.0);
+        lightWeighting = uAmbientColor + uPointLightingSpecularColor * specularLightWeighting + uPointLightingDiffuseColor * diffuseLightWeighting;
+	
+		vec4 fragmentColor;
+		fragmentColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+		
+		
+		gl_FragColor = vec4(fragmentColor.rgb * lightWeighting, fragmentColor.a * uAlpha);
+		
+       //vec4 textureColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+        //gl_FragColor = vec4(textureColor.rgb, textureColor.a * uAlpha);
+    }
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+	attribute vec3 aVertexNormal;
+    attribute vec2 aTextureCoord;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+	uniform mat3 uNMatrix;
+
+    varying vec2 vTextureCoord;
+	varying vec3 vTransformedNormal;
+	varying vec4 vPosition;
+	
+	uniform float billboard_ON;
+	mat4 modelViewMatrix;
+	
+	void billboardMatrix(){
+
+		for( int i=0; i<3; i+=2 ){ 
+			for(int j=0; j<3; j++ ) {
+				if (i==j)
+					modelViewMatrix[i][j] = 1.0;
+				else if(i==3)
+					modelViewMatrix[i][j] = 0.0;
+			}
+		}
+	}
+
+
+    void main(void) {
+		modelViewMatrix = uMVMatrix;
+		
+		if(billboard_ON==1.0){
+			billboardMatrix();
+		}
+		vPosition = modelViewMatrix * vec4(aVertexPosition, 1.0);
+        gl_Position = uPMatrix * vPosition;
+        vTextureCoord = aTextureCoord;
+        vTransformedNormal = uNMatrix * aVertexNormal;
+    }
+</script>
+
+<script type="text/javascript">
+    ////////////*Script Global Variables*////////////
+    var gl;
+
+	//Detect Mobile Devices
+	var mobileDevice = 0;
+	
+	var numberOfMoves = 0;
+	
+	var demoMode = 0;
+	
+	//side-by-side Stereo
+	var top;
+    var bottom;
+    
+    var hdiv2;
+    
+    var left;
+    var right;
+    var aspectratio;
+    var leftSide;
+    var rightSide;
+    var Cright;
+    var CameraRight;
+	
+	
+    //Shader Program
+    var shaderProgram;
+
+    //Textures variables
+    //Scenario textures
+    var grassTextures = Array();
+    var waterTextures = Array();
+    var roadTextures = Array();
+    var stoneTextures = Array();
+    //Frog textures
+    var frogBodyTextures = Array();
+    var frogEyeTextures = Array();
+    //Timberlog textures
+    var timberlogTextures = Array();
+    //Turtle textures
+    var turtleTextures = Array();
+    //Car textures
+    var carTextures = Array();
+    //Bus textures
+    var busTextures = Array();
+    //Bus top textures
+    var busTopTextures = Array();
+    //Wheel textures
+    var wheelTextures = Array();
+    //Turtle textures
+    var turtleTextures = Array();
+    //Turtle skin textures
+    var skinTextures = Array();
+	//BillboardGrass
+    var billboardGrassTextures = Array();
+	//BillboardTree
+    var treeTextures = Array();
+	//Landscape
+    var landscapeTextures = Array();
+	//Tunnel
+    var tunnelTextures = Array();
+	//Big Rock
+    var bigRockTextures = Array();
+	//Dead Frog
+    var deadFrogTextures = Array();
+	//Plus1
+    var plus1Textures = Array();
+	//Sun
+    var sunTextures = Array();
+	//Flare 1
+    var flare1Textures = Array();
+    //Flare 2
+    var flare2Textures = Array();
+    //Particle firework
+    var particleTextures = Array();
+	
+    var leftCollision = 0; //carro e tronco
+    var rightCollision = 0; //autocarro e tartaruga
+    
+    //Matrices
+    var mvMatrix = mat4.create();
+    var mvMatrixStack = [];
+    var pMatrix = mat4.create();
+
+    //Already here in the program (Delete asap!!!) with caution
+    var xRot = 0;
+    var xSpeed = 0;
+    var yRot = 0;
+    var ySpeed = 0;
+    var z = -5.0;
+    var filter = 0;
+
+    var currentlyPressedKeys = {};
+
+    //Positions that increment frog position
+    var frogPosIncX = 0.0;
+    var frogPosIncY = 0.0;
+
+    //Positions that increment dynamicObjects position
+    var timberlogPosIncX = 0.03;
+    var turtlePosIncX = -0.02;
+    var carPosIncX = 0.07;
+    var busPosIncX = -0.05;
+
+    //Colision between frog and borders
+    var unlockUpMove = 1;
+    var unlockDownMove = 1;
+    var unlockRightMove = 1;
+    var unlockLeftMove = 1;
+
+    //Buffers
+    var cubeVertexPositionBuffer;
+    var cubeVertexTextureCoordBuffer;
+    var cubeVertexIndexBuffer;
+    var cubeVertexNormalBuffer;
+    
+    var sphereVertexPositionBuffer;
+    var sphereVertexTextureBuffer;
+    var sphereVertexIndexBuffer;
+    var sphereVertexNormalBuffer;
+	
+    //Board Positions
+    var endLeft = -8.75;
+    var endRight = 8.75;
+    var beginLeft = 8.75;
+    var beginRight = -8.75;
+    
+    //Use to check if the frog is above a friend
+	var aboveAlly = false;
+	var aboveStencilObject = false;
+
+    //For animate function
+    var lastTime = 0;
+    
+    var initfirework = 0;
+	
+	//Camera variables
+	var cameraStyle = 3;
+	
+	var pitch = 0;
+    var pitchRate = 0;
+
+    var yaw = 0;
+    var yawRate = 0;
+
+    var CameraPosX = frogPosition.bodyPosX;
+    var CameraPosY = frogPosition.bodyPosY - 1;
+    var CameraPosZ = frogPosition.bodyPosZ + 4;
+	
+	//Timer variables
+    var Timer1;
+	
+	//FrogDied
+	var gameOverFlag = 0;
+	var frogDied = 0;
+	var wonPoint = 0;
+	var soulLift = frogPosition.bodyPosZ + 1;
+	var plus1Lift = frogPosition.bodyPosZ + 1;
+	
+	//GAME POINTS AND LIFES
+	var playerLifes = 5;
+	var playerPoints = 0;
+	
+	//LIGHTS
+	var nightMode = 0;
+	
+	var materialShininess = 32.0;
+	var ambientColorR = 1.0;
+	var ambientColorG = 1.0;
+	var ambientColorB = 1.0;
+	var pointLightingLocationX = 0.0;
+	var pointLightingLocationY = 2.0;
+	var pointLightingLocationZ = -20.0;
+	var pointLightingSpecularColorR = 0.0;
+	var pointLightingSpecularColorG = 0.0;
+	var pointLightingSpecularColorB = 0.0;
+	var pointLightingDiffuseColorR = 0.0;
+	var pointLightingDiffuseColorG = 0.0;
+	var pointLightingDiffuseColorB = 0.0;
+		
+	//Only produce the hit sound once
+	var frogHit = 0;
+	var frogSplash = 0;
+	var soulSoundFlag = 0;
+	var plus1SoundFlag = 0;
+	var jumpSoundFlag = 1;
+	
+	
+	//Initial values
+	var initialPitch = 0;
+	var initialYaw = 0;
+	var firstLoop = 1;
+
+    ////////////*Script Function*////////////
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("experimental-webgl");
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
+            }
+            k = k.nextSibling;
+        }
+
+        var shader;
+        if (shaderScript.type == "x-shader/x-fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        return shader;
+    }
+
+    function initShaders() {
+		
+        var fragmentShader = getShader(gl, "shader-fs");
+        var vertexShader = getShader(gl, "shader-vs");
+
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        gl.useProgram(shaderProgram);
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+		
+		shaderProgram.vertexNormalAttribute = gl.getAttribLocation(shaderProgram, "aVertexNormal");
+        gl.enableVertexAttribArray(shaderProgram.vertexNormalAttribute);
+
+        shaderProgram.textureCoordAttribute = gl.getAttribLocation(shaderProgram, "aTextureCoord");
+        gl.enableVertexAttribArray(shaderProgram.textureCoordAttribute);
+
+        shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+		shaderProgram.nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
+        shaderProgram.samplerUniform = gl.getUniformLocation(shaderProgram, "uSampler");
+        shaderProgram.alphaUniform = gl.getUniformLocation(shaderProgram, "uAlpha");
+		shaderProgram.materialShininessUniform = gl.getUniformLocation(shaderProgram, "uMaterialShininess");
+		shaderProgram.spotLightDirectionUniform = gl.getUniformLocation(shaderProgram, "spotLightDirection");
+		shaderProgram.ambientColorUniform = gl.getUniformLocation(shaderProgram, "uAmbientColor");
+        shaderProgram.pointLightingLocationUniform = gl.getUniformLocation(shaderProgram, "uPointLightingLocation");
+        shaderProgram.pointLightingSpecularColorUniform = gl.getUniformLocation(shaderProgram, "uPointLightingSpecularColor");
+        shaderProgram.pointLightingDiffuseColorUniform = gl.getUniformLocation(shaderProgram, "uPointLightingDiffuseColor");
+		shaderProgram.billboard_uniformId = gl.getUniformLocation(shaderProgram, "billboard_ON");
+    }
+
+    function handleLoadedTexture(textures) {
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+        gl.bindTexture(gl.TEXTURE_2D, textures[0]);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textures[0].image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+		//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+		//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+
+        gl.bindTexture(gl.TEXTURE_2D, textures[1]);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textures[1].image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+		//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+		//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+		
+
+        gl.bindTexture(gl.TEXTURE_2D, textures[2]);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textures[2].image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+		//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+		//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.generateMipmap(gl.TEXTURE_2D);
+
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+
+    //init the texture (used to put less code on init textures)
+    function createTexture(textImage, Textures, image) {
+        for (var i = 0; i < 3; i++) {
+            var texture = gl.createTexture();
+            texture.image = textImage;
+            Textures.push(texture);
+        }
+        textImage.onload = function () {
+            handleLoadedTexture(Textures)
+        }
+        textImage.src = image;
+    }
+
+    function initTexture() {
+        //Grass
+        var textImage0 = new Image();
+        createTexture(textImage0, grassTextures, "images/grass.jpg");
+        
+        //Water
+        var textImage1 = new Image();
+        createTexture(textImage1, waterTextures, "images/water.jpg");
+
+        //Road
+        var textImage2 = new Image();
+        createTexture(textImage2, roadTextures, "images/road.jpg");
+
+        //Stones
+        var textImage3 = new Image();
+        createTexture(textImage3, stoneTextures, "images/stones.jpg");
+
+        //Frog Body
+        var textImage4 = new Image();
+        createTexture(textImage4, frogBodyTextures, "images/frogBody.jpg");
+
+        //Frog Eye
+        var textImage5 = new Image();
+        createTexture(textImage5, frogEyeTextures, "images/frogEye.jpg");
+
+        //Timberlog
+        var textImage6 = new Image();
+        createTexture(textImage6, timberlogTextures, "images/timberlog.jpg");
+
+        //Car
+        var textImage7 = new Image();
+        createTexture(textImage7, carTextures, "images/car.jpg");
+
+        //Bus
+        var textImage8 = new Image();
+        createTexture(textImage8, busTextures, "images/bus.jpg");
+        
+        //Wheel
+        var textImage9 = new Image();
+        createTexture(textImage9, wheelTextures, "images/wheel.jpg"); /// ajustar tamanho da textura para depois aparecer bem nas outras cameras
+        
+        //Turtle
+        var textImage10 = new Image();
+        createTexture(textImage10, turtleTextures, "images/turtle.jpg"); 
+        
+        //Turtle skin
+        var textImage11 = new Image();
+        createTexture(textImage11, skinTextures, "images/skin.jpg"); 
+        
+        //Bus Top
+        var textImage12 = new Image();
+        createTexture(textImage12, busTopTextures, "images/busTop.jpg"); 
+		
+		//billboardGrass
+		var textImage13 = new Image();
+        createTexture(textImage13, billboardGrassTextures, "images/billboardGrass.png");
+		
+		//billboardTree
+		var textImage14 = new Image();
+        createTexture(textImage14, treeTextures, "images/tree.png");
+		
+		//Landscape
+		var textImage15 = new Image();
+        createTexture(textImage15, landscapeTextures, "images/landscape.jpg");
+		
+		//Tunnel
+		var textImage16 = new Image();
+        createTexture(textImage16, tunnelTextures, "images/tunnel.jpg");
+		
+		//Big Rock
+		var textImage17 = new Image();
+        createTexture(textImage17, bigRockTextures, "images/rock.png");
+		
+		//Dead Frog
+		var textImage18 = new Image();
+        createTexture(textImage18, deadFrogTextures, "images/deadFrog.png");
+		
+		//Plus 1
+		var textImage19 = new Image();
+        createTexture(textImage19, plus1Textures, "images/plus1.png");
+		
+		//Sun
+		var textImage20 = new Image();
+        createTexture(textImage20, sunTextures, "images/sun.png")
+        
+        //Flare
+		var textImage21 = new Image();
+        createTexture(textImage21, flare1Textures, "images/flare1.png")
+        
+        //Flare
+		var textImage22 = new Image();
+        createTexture(textImage22, flare2Textures, "images/flare2.png")
+        
+        //Particle firework
+		var textImage23 = new Image();
+        createTexture(textImage23, particleTextures, "images/particle.png")
+    }
+
+    function mvPushMatrix() {
+        var copy = mat4.create();
+        mat4.set(mvMatrix, copy);
+        mvMatrixStack.push(copy);
+    }
+
+    function mvPopMatrix() {
+        if (mvMatrixStack.length == 0) {
+            throw "Invalid popMatrix!";
+        }
+        mvMatrix = mvMatrixStack.pop();
+    }
+
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+    }
+
+    function degToRad(degrees) {
+        return degrees * Math.PI / 180;
+    }
+
+    function handleKeyDown(event) {
+        currentlyPressedKeys[event.keyCode] = true;
+
+        if (String.fromCharCode(event.keyCode) == "F") {
+            filter += 1;
+            if (filter == 3) {
+                filter = 0;
+            }
+        }
+    }
+
+    function handleKeyUp(event) {
+        currentlyPressedKeys[event.keyCode] = false;
+		if(event.keyCode==87 ||event.keyCode==83 ||event.keyCode==65 ||event.keyCode==68){
+			jumpSoundFlag = 0;
+		}
+    }
+
+    //Timer Functions
+    function StartTimer(doFunc, doInterval){
+        Timer1 = setInterval(doFunc,doInterval);
+    }
+    
+    function StopTimer(){
+        clearInterval(Timer1);
+    }
+    
+	function themeSong(){
+		if(frogDied==0){
+			var froggerThemeSong = new Audio("sound/FroggerThemeSong.wav");
+			froggerThemeSong.play();
+		}
+	}
+	
+    function busRandom(){
+        var r = Math.floor(Math.random() * buses.length); 
+        //console.log(r);
+        if(!buses[r].active){
+            buses[r].active = true;
+        }
+    }
+    
+    function carRandom(){
+        var r = Math.floor(Math.random() * cars.length); 
+       // console.log(r);
+        if(!cars[r].active){
+            cars[r].active = true;
+        }
+    }
+    
+    function timberlogRandom(){
+        var r = Math.floor(Math.random() * timberlogs.length); 
+       // console.log(r);
+        if(!timberlogs[r].active){
+            timberlogs[r].active = true;
+        }
+    }
+    
+    function turtleRandom(){
+        var r = Math.floor(Math.random() * turtles.length); 
+       // console.log(r);
+        if(!turtles[r].active){
+            turtles[r].active = true;
+        }
+    }
+    
+    function checkMove() {
+        var noMove = true;
+        if (frogPosition.bodyPosX <= -4.25) {
+            frogPosIncX = 0.0;
+            frogPosIncY = 0.0;
+            unlockLeftMove = 0;
+            noMove = false;
+        }  
+		if (frogPosition.bodyPosX >= 4.25) {
+            frogPosIncX = 0.0;
+            frogPosIncY = 0.0;
+            unlockRightMove = 0;
+            noMove = false;
+        } 
+		if (frogPosition.bodyPosY <= -10) {
+            frogPosIncX = 0.0;
+            frogPosIncY = 0.0;
+            unlockDownMove = 0;
+            noMove = false;
+        } 
+		if (frogPosition.bodyPosY >= 6.0) {
+            frogPosIncX = 0.0;
+            frogPosIncY = 0.0;
+            unlockUpMove = 0;
+            noMove = false;
+        } 
+		if(noMove) {       
+            unlockRightMove = 1;
+            unlockLeftMove = 1;
+            unlockUpMove = 1;
+            unlockDownMove = 1;
+        }
+    }
+    
+	function mobileControls(){
+		checkMove();
+		$(function() {
+			$("body").click(function(e) {
+					if ((e.target.id == "upMobileControl" || $(e.target).parents("#upMobileControl").size()) && unlockUpMove) {					
+						frogPosIncX = 0.0;
+						frogPosIncY = 1.0;
+						unlockDownMove = 1;
+						
+						if(numberOfMoves == 0){
+							moveFrog();
+							//moveFrogReflection();
+							numberOfMoves++;
+						}
+						
+						frogPosIncX = 0.0;
+						frogPosIncY = 0.0;
+					} else if ((e.target.id == "downMobileControl" || $(e.target).parents("#downMobileControl").size()) && unlockDownMove){ 
+						frogPosIncX = 0.0;
+						frogPosIncY = -1.0;
+						unlockUpMove = 1;
+						
+						if(numberOfMoves == 0){
+							moveFrog();
+							//moveFrogReflection();
+							numberOfMoves++;
+						}
+						
+						frogPosIncX = 0.0;
+						frogPosIncY = 0.0;
+					}else if ((e.target.id == "leftMobileControl" || $(e.target).parents("#leftMobileControl").size()) && unlockLeftMove){
+						frogPosIncX = -1.0;
+						frogPosIncY = 0.0;
+						unlockRightMove = 1;
+						
+						if(numberOfMoves == 0){
+							moveFrog();
+							//moveFrogReflection();
+							numberOfMoves++;
+						}
+						
+						frogPosIncX = 0.0;
+						frogPosIncY = 0.0;
+					}else if ((e.target.id == "rightMobileControl" || $(e.target).parents("#rightMobileControl").size()) && unlockRightMove){ 
+						frogPosIncX = +1.0;
+						frogPosIncY = 0.0;
+						unlockLeftMove = 1;
+						
+						if(numberOfMoves == 0){
+							moveFrog();
+							//moveFrogReflection();
+							numberOfMoves++;
+						}
+						
+						frogPosIncX = 0.0;
+						frogPosIncY = 0.0;
+					}	
+			});
+		})
+		
+		numberOfMoves = 0;
+	}
+
+	
+    function handleKeys() {
+        checkMove();
+        if (currentlyPressedKeys[87] && unlockUpMove) {
+            // w
+            frogPosIncX = 0.0;
+            frogPosIncY = 0.25;
+            unlockDownMove = 1;
+        } else if (currentlyPressedKeys[83] && unlockDownMove) {
+            // s
+            frogPosIncX = 0.0;
+            frogPosIncY = -0.25;
+            unlockUpMove = 1;
+        } else if (currentlyPressedKeys[65] && unlockLeftMove) { 
+            // a
+            frogPosIncX = -0.25;
+            frogPosIncY = 0.0;
+            unlockRightMove = 1;
+        } else if (currentlyPressedKeys[68] && unlockRightMove) { 
+            // d
+            frogPosIncX = +0.25;
+            frogPosIncY = 0.0;
+            unlockLeftMove = 1;
+        }else if (currentlyPressedKeys[49]) {
+            // 1
+			cameraStyle = 1;
+        }else if (currentlyPressedKeys[50]) {
+            // 2
+			cameraStyle = 2;
+        }else if (currentlyPressedKeys[51]) {
+            // 3
+			cameraStyle = 3;
+        } else {
+            frogPosIncX = 0.0;
+            frogPosIncY = 0.0;
+        }
+		
+		if (currentlyPressedKeys[33]) {
+            // Page Up
+            pitchRate = 0.1;
+        } else if (currentlyPressedKeys[34]) {
+            // Page Down
+            pitchRate = -0.1;
+        } else {
+            pitchRate = 0;
+        }
+
+        if (currentlyPressedKeys[37]) {
+            // Left cursor key
+            yawRate = 1.0;
+        } else if (currentlyPressedKeys[39]) {
+            // Right cursor key
+            yawRate = -1.0;
+        } else {
+            yawRate = 0;
+        }
+
+        if (currentlyPressedKeys[38]) {
+            // Up cursor key 
+            speed = 0.003;
+        } else if (currentlyPressedKeys[40]) {
+            // Down cursor key
+            speed = -0.003;
+        } else {
+            speed = 0;
+        }
+		
+		if (currentlyPressedKeys[77]) {
+				nightMode=0;
+		}
+		if (currentlyPressedKeys[78]) {
+				nightMode=1;
+			
+		}//if (currentlyPressedKeys[82]) { //restart
+        //    console.log("start");
+//			StartTimer(firework, 600);
+  //      }
+    }
+	
+	function newFrogLife(){
+		frogDied = 0;
+		wonPoint = 0;
+		
+		//Frog
+		frogPosition.bodyPosX = 0.0;
+        frogPosition.leftEyePosX = 0.2;
+        frogPosition.rightEyePosX = -0.2;
+
+        frogPosition.bodyPosY = -10;
+        frogPosition.leftEyePosY = -9.7;
+        frogPosition.rightEyePosY = -9.7;
+		
+		frog.body.translate = [frogPosition.bodyPosX, frogPosition.bodyPosY, frogPosition.bodyPosZ];
+        frog.leftEye.translate = [frogPosition.leftEyePosX, frogPosition.leftEyePosY, frogPosition.leftEyePosZ];
+        frog.rightEye.translate = [frogPosition.rightEyePosX, frogPosition.rightEyePosY, frogPosition.rightEyePosZ];
+		
+		//Reflection
+		frogReflectionPosition.bodyPosX = frogPosition.bodyPosX;
+		frogReflectionPosition.leftEyePosX = frogPosition.leftEyePosX;
+		frogReflectionPosition.rightEyePosX = frogPosition.rightEyePosX;
+
+		frogReflectionPosition.bodyPosY = frogPosition.bodyPosY;
+		frogReflectionPosition.leftEyePosY = frogPosition.leftEyePosY;
+		frogReflectionPosition.rightEyePosY =  frogPosition.rightEyePosY;
+
+		frogReflection.body.translate = [frogReflectionPosition.bodyPosX, frogReflectionPosition.bodyPosY, frogReflectionPosition.bodyPosZ];
+		frogReflection.leftEye.translate = [frogReflectionPosition.leftEyePosX, frogReflectionPosition.leftEyePosY, frogReflectionPosition.leftEyePosZ];
+		frogReflection.rightEye.translate = [frogReflectionPosition.rightEyePosX, frogReflectionPosition.rightEyePosY, frogReflectionPosition.rightEyePosZ];
+		
+		//Unlock moves
+		unlockDownMove = 0;
+		unlockTopMove = 1;
+		unlockRightMove = 1;
+		unlockLeftMove = 1;
+		
+		frogHit = 0;
+		frogSplash = 0;
+		soulSoundFlag = 0;
+		plus1SoundFlag = 0;
+		jumpSoundFlag = 0;
+        initfirework = 0;
+		
+		leftCollision = 0;
+		rightCollision = 0;
+	}
+	
+	function winPoint(){
+		wonPoint = 1;
+	}
+	
+	function gameOver(){
+		document.getElementById('gameOver').style.visibility = "visible";
+		//document.getElementById('play').style.visibility = "visible";
+		gameOverFlag = 1;
+		
+		var gameOverSound = new Audio("sound/gameOverSound.wav");
+		gameOverSound.play();
+	}
+	
+    function drawElements(objVertexPositionBuffer, objVertexTextureCoordBuffer, objVertexIndexBuffer, objVertexNormalBuffer, object) {
+		if (object.id == 5) {
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            gl.uniform1f(shaderProgram.alphaUniform, parseFloat(0.4));
+        } else if(object.image == "billboardGrass" || object.image == "tree" || object.image == "landscape"|| object.image == "bigRock"|| object.image == "sun" || object.image == "flare1" || object.image == "flare2"){
+			gl.enable(gl.BLEND);
+			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+			gl.uniform1f(shaderProgram.alphaUniform, parseFloat(1.0));
+		}else if(object.image == "deadFrog" || object.image == "plus1"){
+			gl.enable(gl.BLEND);
+			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+			gl.uniform1f(shaderProgram.alphaUniform, parseFloat(0.7));
+        }else if(object.image == "particle" ){ //firework
+            gl.disable(gl.DEPTH_TEST);
+			gl.enable(gl.BLEND);
+			gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+			gl.uniform1f(shaderProgram.alphaUniform, parseFloat(1.0));    
+		}else {
+			gl.disable(gl.BLEND);
+			gl.enable(gl.DEPTH_TEST);
+            gl.uniform1f(shaderProgram.alphaUniform, parseFloat(1.0));
+        }
+		
+		mvPushMatrix();
+        mat4.translate(mvMatrix, object.translate);
+        mat4.rotate(mvMatrix, object.rotationAngle, object.rotate);
+        mat4.scale(mvMatrix, object.scale);
+		
+		gl.uniform1f(shaderProgram.materialShininessUniform, parseFloat(materialShininess));
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, objVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, objVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, objVertexTextureCoordBuffer);
+        gl.vertexAttribPointer(shaderProgram.textureCoordAttribute, objVertexTextureCoordBuffer.itemSize, gl.FLOAT, false, 0, 0);
+		
+		gl.bindBuffer(gl.ARRAY_BUFFER, objVertexTextureCoordBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, objVertexTextureCoordBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, objVertexNormalBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, objVertexNormalBuffer.itemSize, gl.FLOAT, false, 0, 0);
+       
+        if (object.image == "water") {
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, waterTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 0);
+        } else if (object.image == "grass") {
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, grassTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 1);
+        } else if (object.image == "road") {
+            gl.activeTexture(gl.TEXTURE2);
+            gl.bindTexture(gl.TEXTURE_2D, roadTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 2);
+        } else if (object.image == "stone") {
+            gl.activeTexture(gl.TEXTURE3);
+            gl.bindTexture(gl.TEXTURE_2D, stoneTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 3);
+        } else if (object.image == "frogBody") {
+            gl.activeTexture(gl.TEXTURE4);
+            gl.bindTexture(gl.TEXTURE_2D, frogBodyTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 4);
+        } else if (object.image == "frogEye") {
+            gl.activeTexture(gl.TEXTURE5);
+            gl.bindTexture(gl.TEXTURE_2D, frogEyeTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 5);
+        } else if (object.image == "timberlog") {
+            gl.activeTexture(gl.TEXTURE6);
+            gl.bindTexture(gl.TEXTURE_2D, timberlogTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 6);
+        } else if (object.image == "car") {
+            gl.activeTexture(gl.TEXTURE7);
+            gl.bindTexture(gl.TEXTURE_2D, carTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 7);
+        } else if (object.image == "bus") {
+            gl.activeTexture(gl.TEXTURE8);
+            gl.bindTexture(gl.TEXTURE_2D, busTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 8);
+        } else if (object.image == "wheel") {
+            gl.activeTexture(gl.TEXTURE9);
+            gl.bindTexture(gl.TEXTURE_2D, wheelTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 9);
+        } else if (object.image == "turtle") {
+            gl.activeTexture(gl.TEXTURE10);
+            gl.bindTexture(gl.TEXTURE_2D, turtleTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 10);
+        } else if (object.image == "skin") {
+            gl.activeTexture(gl.TEXTURE11);
+            gl.bindTexture(gl.TEXTURE_2D, skinTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 11);
+        } else if (object.image == "busTop") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, busTopTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        } else if (object.image == "billboardGrass") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, billboardGrassTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        }else if (object.image == "tree") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, treeTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        }else if (object.image == "landscape") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, landscapeTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        }else if (object.image == "tunnel") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, tunnelTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        }else if (object.image == "bigRock") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, bigRockTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        }else if (object.image == "deadFrog") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, deadFrogTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        }else if (object.image == "plus1") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, plus1Textures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        }else if (object.image == "sun") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, sunTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        }else if (object.image == "flare1") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, flare1Textures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        }else if (object.image == "flare2") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, flare2Textures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+		}else if (object.image == "particle") {
+            gl.activeTexture(gl.TEXTURE12);
+            gl.bindTexture(gl.TEXTURE_2D, particleTextures[filter]);
+            gl.uniform1i(shaderProgram.samplerUniform, 12);
+        }
+		
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, objVertexIndexBuffer);
+        setMatrixUniforms();
+        gl.drawElements(gl.TRIANGLES, objVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+        mvPopMatrix();
+    }
+    
+    function initCube(){
+        cubeVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, cubeVertexPositionBuffer);
+        vertices = [
+            // Front face
+            -1.0, -1.0,  1.0,
+             1.0, -1.0,  1.0,
+             1.0,  1.0,  1.0,
+            -1.0,  1.0,  1.0,
+
+            // Back face
+            -1.0, -1.0, -1.0,
+            -1.0,  1.0, -1.0,
+             1.0,  1.0, -1.0,
+             1.0, -1.0, -1.0,
+
+            // Top face
+            -1.0,  1.0, -1.0,
+            -1.0,  1.0,  1.0,
+             1.0,  1.0,  1.0,
+             1.0,  1.0, -1.0,
+
+            // Bottom face
+            -1.0, -1.0, -1.0,
+             1.0, -1.0, -1.0,
+             1.0, -1.0,  1.0,
+            -1.0, -1.0,  1.0,
+
+            // Right face
+             1.0, -1.0, -1.0,
+             1.0,  1.0, -1.0,
+             1.0,  1.0,  1.0,
+             1.0, -1.0,  1.0,
+
+            // Left face
+            -1.0, -1.0, -1.0,
+            -1.0, -1.0,  1.0,
+            -1.0,  1.0,  1.0,
+            -1.0,  1.0, -1.0,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        cubeVertexPositionBuffer.itemSize = 3;
+        cubeVertexPositionBuffer.numItems = 24;
+            
+        cubeVertexNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, cubeVertexNormalBuffer);
+        var vertexNormals = [
+            // Front face
+             0.0,  0.0,  1.0,
+             0.0,  0.0,  1.0,
+             0.0,  0.0,  1.0,
+             0.0,  0.0,  1.0,
+            // Back face
+             0.0,  0.0, -1.0,
+             0.0,  0.0, -1.0,
+             0.0,  0.0, -1.0,
+             0.0,  0.0, -1.0,
+            // Top face
+             0.0,  1.0,  0.0,
+             0.0,  1.0,  0.0,
+             0.0,  1.0,  0.0,
+             0.0,  1.0,  0.0,
+            // Bottom face
+             0.0, -1.0,  0.0,
+             0.0, -1.0,  0.0,
+             0.0, -1.0,  0.0,
+             0.0, -1.0,  0.0,
+            // Right face
+             1.0,  0.0,  0.0,
+             1.0,  0.0,  0.0,
+             1.0,  0.0,  0.0,
+             1.0,  0.0,  0.0,
+            // Left face
+            -1.0,  0.0,  0.0,
+            -1.0,  0.0,  0.0,
+            -1.0,  0.0,  0.0,
+            -1.0,  0.0,  0.0
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexNormals), gl.STATIC_DRAW);
+        cubeVertexNormalBuffer.itemSize = 3;
+        cubeVertexNormalBuffer.numItems = 24;
+    
+
+        cubeVertexTextureCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, cubeVertexTextureCoordBuffer);
+        var textureCoords = [
+            // Front face
+            0.0, 0.0,
+            1.0, 0.0,
+            1.0, 1.0,
+            0.0, 1.0,
+
+            // Back face
+            1.0, 0.0,
+            1.0, 1.0,
+            0.0, 1.0,
+            0.0, 0.0,
+
+            // Top face
+            0.0, 1.0,
+            0.0, 0.0,
+            1.0, 0.0,
+            1.0, 1.0,
+
+            // Bottom face
+            1.0, 1.0,
+            0.0, 1.0,
+            0.0, 0.0,
+            1.0, 0.0,
+
+            // Right face
+            1.0, 0.0,
+            1.0, 1.0,
+            0.0, 1.0,
+            0.0, 0.0,
+
+            // Left face
+            0.0, 0.0,
+            1.0, 0.0,
+            1.0, 1.0,
+            0.0, 1.0,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoords), gl.STATIC_DRAW);
+        cubeVertexTextureCoordBuffer.itemSize = 2;
+        cubeVertexTextureCoordBuffer.numItems = 24;
+
+        cubeVertexIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVertexIndexBuffer);
+        var cubeVertexIndices = [
+            0, 1, 2,      0, 2, 3,    // Front face
+            4, 5, 6,      4, 6, 7,    // Back face
+            8, 9, 10,     8, 10, 11,  // Top face
+            12, 13, 14,   12, 14, 15, // Bottom face
+            16, 17, 18,   16, 18, 19, // Right face
+            20, 21, 22,   20, 22, 23  // Left face
+        ]
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(cubeVertexIndices), gl.STATIC_DRAW);
+        cubeVertexIndexBuffer.itemSize = 1;
+        cubeVertexIndexBuffer.numItems = 36;
+    }
+    
+    function initSphere(){
+        var vertexPositionData = [];
+        var normalData = [];
+        var textureCoordData = [];
+        
+        var latitudeBands = 30;
+        var longitudeBands = 30;
+        var radius = 1;
+        
+        for (var latNumber = 0; latNumber <= latitudeBands; latNumber++) {
+          var theta = latNumber * Math.PI / latitudeBands;
+          var sinTheta = Math.sin(theta);
+          var cosTheta = Math.cos(theta);
+
+          for (var longNumber = 0; longNumber <= longitudeBands; longNumber++) {
+            var phi = longNumber * 2 * Math.PI / longitudeBands;
+            var sinPhi = Math.sin(phi);
+            var cosPhi = Math.cos(phi);
+
+            var x = cosPhi * sinTheta;
+            var y = cosTheta;
+            var z = sinPhi * sinTheta;
+            var u = 1 - (longNumber / longitudeBands);
+            var v = 1 - (latNumber / latitudeBands);
+
+            normalData.push(x);
+            normalData.push(y);
+            normalData.push(z);
+            textureCoordData.push(u);
+            textureCoordData.push(v);
+            vertexPositionData.push(radius * x);
+            vertexPositionData.push(radius * y);
+            vertexPositionData.push(radius * z);
+          }
+        }
+        
+        var indexData = [];
+        for (var latNumber = 0; latNumber < latitudeBands; latNumber++) {
+          for (var longNumber = 0; longNumber < longitudeBands; longNumber++) {
+            var first = (latNumber * (longitudeBands + 1)) + longNumber;
+            var second = first + longitudeBands + 1;
+            indexData.push(first);
+            indexData.push(second);
+            indexData.push(first + 1);
+
+            indexData.push(second);
+            indexData.push(second + 1);
+            indexData.push(first + 1);
+          }
+        } 
+        
+        sphereVertexNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, sphereVertexNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normalData), gl.STATIC_DRAW);
+        sphereVertexNormalBuffer.itemSize = 3;
+        sphereVertexNormalBuffer.numItems = normalData.length / 3;
+        
+        sphereVertexTextureCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, sphereVertexTextureCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordData), gl.STATIC_DRAW);
+        sphereVertexTextureCoordBuffer.itemSize = 2;
+        sphereVertexTextureCoordBuffer.numItems = textureCoordData.length / 2;
+        
+        sphereVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, sphereVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPositionData), gl.STATIC_DRAW);
+        sphereVertexPositionBuffer.itemSize = 3;
+        sphereVertexPositionBuffer.numItems = vertexPositionData.length / 3;
+        
+        sphereVertexIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereVertexIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STATIC_DRAW);
+        sphereVertexIndexBuffer.itemSize = 1;
+        sphereVertexIndexBuffer.numItems = indexData.length;
+    }
+        
+    function initParticles(){  //firework
+                console.log("init");
+
+         var v;
+         var theta;
+         
+         var phi;
+
+        for(var i = 0; i < particles.length; i++){
+          //  if(particles[i].life )
+            v = 0.8 * Math.random() + 0.2;
+            phi = Math.random() * Math.PI;
+            theta = 2.0 * Math.random() * Math.PI;
+            
+            //particles[i].x = 0.0;
+            //particles[i].y = -5.0;
+            //particles[i].z = -23.5;
+            
+            particles[i].x = frogPosition.bodyPosX;
+            particles[i].y = frogPosition.bodyPosY;
+            particles[i].z = frogPosition.bodyPosZ;
+             
+                particles[i].vx = v * Math.cos(theta) * Math.sin(phi);
+                particles[i].vy = v * Math.cos(phi);
+                particles[i].vz =  v * Math.sin(theta) * Math.sin(phi);
+            
+            particles[i].az = -0.15; /* simular a aceleraÃâ€žo da gravidade */
+            
+            particles[i].r = 0.882;
+	        particles[i].g = 0.552;	
+	        particles[i].b = 0.211;
+
+	       particles[i].life = 1.0;		               
+	       particles[i].fade = 0.005; 
+            
+        }  
+    
+    }
+    
+    function initBuffers() {
+		initCube();
+        initSphere();
+        //initParticles();
+    }
+
+    function drawScene(viewportSide) {
+		gl.uniform1f(shaderProgram.billboard_uniformId, parseFloat(0.0));	
+		
+        mat4.identity(mvMatrix);        
+        
+		if(mobileDevice==1 && demoMode == 1){
+			CameraRight = vec3.cross([CameraPosX, CameraPosY, CameraPosZ],[0.0,1.0,0.0]); // Each unit vectors
+			if(rightSide==1){
+				//mat4.lookAt([CameraPosX , CameraPosY, CameraPosZ], [CameraPosX, CameraPosY, CameraPosZ],[0,1,0], mvMatrix );
+				
+				mat4.perspective(45, (gl.viewportWidth) / gl.viewportHeight, 0.1, 1000.0, pMatrix);
+				mat4.rotate(mvMatrix, degToRad(-pitch), [1, 0, 0]);
+				mat4.rotate(mvMatrix, degToRad(-yaw), [0, 1, 0]);
+				mat4.rotate(mvMatrix, 24.05, [1, 0, 0]);
+				mat4.translate(mvMatrix, [-CameraPosX-0.25, -CameraPosY, -CameraPosZ]);
+			}
+			if(leftSide==1){
+				//mat4.lookAt([CameraPosX , CameraPosY, CameraPosZ], [CameraPosX, CameraPosY, CameraPosZ],[0,1,0], mvMatrix );
+				
+				mat4.perspective(45, (gl.viewportWidth) / gl.viewportHeight, 0.1, 1000.0, pMatrix);
+				mat4.rotate(mvMatrix, degToRad(-pitch), [1, 0, 0]);
+				mat4.rotate(mvMatrix, degToRad(-yaw), [0, 1, 0]);
+				mat4.rotate(mvMatrix, 24.05, [1, 0, 0]);
+				mat4.translate(mvMatrix, [-CameraPosX+0.25, -CameraPosY, -CameraPosZ]);
+			}
+		} else if(mobileDevice == 0 || (mobileDevice==1 && demoMode == 0)){
+			//mat4.identity(mvMatrix);
+			if(cameraStyle == 1){
+				mat4.ortho(-10.0, 10.0, -20.0 / (gl.viewportWidth / gl.viewportHeight), 20.0 / (gl.viewportWidth / gl.viewportHeight), 0.1, 1000, pMatrix);
+			} else if(cameraStyle == 2){
+				mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 1000.0, pMatrix);
+			} else if(cameraStyle == 3){
+				mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 1000.0, pMatrix);
+				mat4.rotate(mvMatrix, degToRad(-pitch), [1, 0, 0]);
+				mat4.rotate(mvMatrix, degToRad(-yaw), [0, 1, 0]);
+				mat4.rotate(mvMatrix, 24.05, [1, 0, 0]);
+				mat4.translate(mvMatrix, [-CameraPosX, -CameraPosY+1.0, -CameraPosZ-1.0]);
+			}
+			
+		}
+
+		//LIGHTS
+		gl.uniform3f(
+                shaderProgram.spotLightDirectionUniform,
+                parseFloat(frogPosition.bodyPosX),
+                parseFloat(frogPosition.bodyPosY+1),
+                parseFloat(frogPosition.bodyPosZ)
+            );
+		
+		gl.uniform3f(
+                shaderProgram.ambientColorUniform,
+                parseFloat(ambientColorR),
+                parseFloat(ambientColorG),
+                parseFloat(ambientColorB)
+            );
+
+            gl.uniform3f(
+                shaderProgram.pointLightingLocationUniform,
+                parseFloat(pointLightingLocationX),
+                parseFloat(pointLightingLocationY),
+                parseFloat(pointLightingLocationZ)
+            );
+
+            gl.uniform3f(
+                shaderProgram.pointLightingSpecularColorUniform,
+                parseFloat(pointLightingSpecularColorR),
+                parseFloat(pointLightingSpecularColorG),
+                parseFloat(pointLightingSpecularColorB)
+            );
+
+            gl.uniform3f(
+                shaderProgram.pointLightingDiffuseColorUniform,
+                parseFloat(pointLightingDiffuseColorR),
+                parseFloat(pointLightingDiffuseColorG),
+                parseFloat(pointLightingDiffuseColorB)
+            );
+		
+		
+        
+        // STENCIL
+         gl.clear(gl.DEPTH_BUFFER_BIT);
+         gl.enable(gl.STENCIL_TEST);
+      
+         gl.stencilFunc(gl.NEVER, 1, 0xFF);
+         gl.stencilOp(gl.replace, gl.keep, gl.keep);// draw 1s on test fail (always)
+         gl.stencilMask(0xFF);
+         gl.clear(gl.STENCIL_BUFFER_BIT); // needs mask=0xFF
+        
+         for(var i = 0; i < stencilCubes.length; i++){
+             drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, stencilCubes[i]);
+         }
+
+         gl.colorMask(true, true, true, true);
+         gl.depthMask(true);
+         gl.stencilMask(0x00);
+        
+         // draw where stencil's value is 0
+         gl.stencilFunc(gl.EQUAL, 1, 0xFF);        
+         gl.disable(gl.STENCIL_TEST);
+
+        //Draw the scenario
+        for (i = 0; i <= 5; i++) {
+				if (i!=5)
+					drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, scenarioArray[i]);
+        }
+		
+        //Draw the cars
+        for (var i = 0; i < cars.length; i++){
+            if(cars[i].active){
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, cars[i].wheel1);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, cars[i].wheel2);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, cars[i].wheel3);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, cars[i].wheel4);
+                drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer,  cars[i].body);
+                drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, cars[i].top);
+            } else continue
+        }
+
+        //Draw the buses
+         for (var i = 0; i < buses.length; i++){
+            if(buses[i].active){
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, buses[i].wheel1);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, buses[i].wheel2);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, buses[i].wheel3);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, buses[i].wheel4);
+                drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, buses[i].body);
+                drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, buses[i].head);
+            } else continue
+         }
+
+        //Draw the turtles
+        for (var i = 0; i < turtles.length; i++){
+            if(turtles[i].active){
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, turtles[i].leg1);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, turtles[i].leg2);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, turtles[i].leg3);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, turtles[i].leg4);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, turtles[i].body);
+                drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, turtles[i].head);
+            } else continue
+        }
+
+        //Draw the timberlogs
+        for (var i = 0; i < timberlogs.length; i++){
+            if(timberlogs[i].active){
+                drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, timberlogs[i].body);
+            }else continue
+        }
+		
+        //Draw the frog
+        if (frogDied == 0){
+        drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, frog.body);  
+        drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, frog.rightEye);
+        drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, frog.leftEye);
+		//Draw frog Reflection
+		drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, frogReflection.body);  
+        drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, frogReflection.rightEye);
+        drawElements(sphereVertexPositionBuffer, sphereVertexTextureCoordBuffer, sphereVertexIndexBuffer, sphereVertexNormalBuffer, frogReflection.leftEye);
+    }
+		
+		//Draw tunnels
+		for (var i = -1; i <= 1; i=i+2){
+			tunnel.body.translate=[tunnelPosition.posX*i, tunnelPosition.posY, tunnelPosition.posZ];
+			tunnel.rightSide.translate=[(tunnelPosition.posX-1.6)*i, (tunnelPosition.posY + 2.5), tunnelPosition.posZ];
+			tunnel.leftSide.translate=[(tunnelPosition.posX-1.6)*i, (tunnelPosition.posY - 2.5), tunnelPosition.posZ];
+			tunnel.top.translate=[(tunnelPosition.posX-1.6)*i, tunnelPosition.posY, (tunnelPosition.posZ+2.5)];
+			drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, tunnel.body);
+			drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, tunnel.rightSide);
+			drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, tunnel.leftSide);
+			drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, tunnel.top);			
+		}
+		
+		//Water
+		drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, scenarioArray[5]);
+		
+		//////////////////////////////////////////////////////Billboard Objects//////////////////////////////////////////////////////
+		gl.uniform1f(shaderProgram.billboard_uniformId, parseFloat(1.0));
+			//Landscape
+		landscape.body.translate=[landscapePosition.posX, landscapePosition.posY, landscapePosition.posZ];
+		landscape.body.scale=[20, 25, 22];
+		drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, landscape.body);
+			//Grass
+		for (var i = 0; i<=7 ; i++){
+			if(i<=4) //first grass layer
+				billboardGrass.body.translate=[billboardGrassPosition.posX-2*i, billboardGrassPosition.posY, billboardGrassPosition.posZ];
+			else //third grass layer
+				billboardGrass.body.translate=[billboardGrassPosition.posX-3.6*(i-4.9), billboardGrassPosition.posY + 16.5, billboardGrassPosition.posZ];
+			drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, billboardGrass.body);
+        }
+			//Big Rock
+		for(var r=-1;r<=1;r+=2){	
+			for (var i = 2; i>=0 ; i--){ //draw column of rocks
+				for (var j = 2; j>=-3 ; j--){ //draw line of rocks
+					if(r==-1)
+						bigRock.body.rotate=[0, 0, 1];
+					if(r==1)
+						bigRock.body.rotate=[0, 0, -1];
+					bigRock.body.translate=[(bigRockPosition.posX+2*i)*r,bigRockPosition.posY+j, bigRockPosition.posZ];
+					drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, bigRock.body);
+				}
+			}
+		}
+		
+			//Tree
+		for (var i = -4.75; i<=5.75 ; i+=9.5){
+			tree.body.translate=[treePosition.posX+i, treePosition.posY + 9.5, treePosition.posZ];
+			drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, tree.body);
+        }
+			
+			//Frog Soul
+		if(frogDied==1 && gameOverFlag ==0){
+
+			if(soulSoundFlag==0){	
+				var soulSound = new Audio("sound/Soul.wav");
+				soulSound.play();
+				soulSoundFlag=1;
+			}
+			
+			if(mobileDevice == 1 && demoMode == 1){
+				soulLift += 0.005;
+			}else if(mobileDevice == 1 && demoMode == 0){ 
+				soulLift += 0.03;
+			} else{
+				soulLift += 0.01;
+			}
+			
+			if(soulLift <= -20){
+				deadFrog.body.translate=[frogPosition.bodyPosX, frogPosition.bodyPosY, soulLift];
+				drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, deadFrog.body);
+			} else {
+				soulLift = frogPosition.bodyPosZ + 1;
+				if((demoMode==0 && mobileDevice==1) || mobileDevice ==0)
+					playerLifes -=1;
+				if(playerLifes==0){
+					gameOver();
+				}else if(playerLifes>0){
+					newFrogLife();
+                    
+				}
+			}
+		}
+        	
+			//Plus one
+		if(wonPoint ==1){
+			if(plus1SoundFlag==0){	
+				var plus1Sound = new Audio("sound/plus1.wav");
+				plus1Sound.play();
+				plus1SoundFlag = 1;
+			}
+			
+			if(mobileDevice == 1 && demoMode == 1){
+				plus1Lift += 0.005;
+			}else if(mobileDevice == 1 && demoMode == 0){ 
+				plus1Lift += 0.03;
+			} else{
+				plus1Lift += 0.01;
+			}
+			
+			if(plus1Lift <= -20){
+				plus1.body.translate=[frogPosition.bodyPosX, frogPosition.bodyPosY, plus1Lift];
+				drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, plus1.body);
+			} else {
+				plus1Lift = frogPosition.bodyPosZ + 1;
+				playerPoints +=1;
+				newFrogLife();
+			}
+		}
+		
+		//LENS FLARE  
+		if(cameraStyle == 3 && frogDied == 0 && nightMode == 0){
+			for(var i = 0; i <lensflare.length; i++){
+				drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, lensflare[i]);
+			}
+		}		
+		
+		gl.uniform1f(shaderProgram.billboard_uniformId, parseFloat(0.0));
+        
+        
+        //FIREWORK
+        if(frogDied == 1 && frogSplash == 0){   
+            if(initfirework == 0){
+                initParticles();
+                initfirework = 1;  
+        }
+        for(var i = 0; i < particles.length ; i++){ 
+            if(particles[i].life > 0.0){
+                drawElements(cubeVertexPositionBuffer, cubeVertexTextureCoordBuffer, cubeVertexIndexBuffer, cubeVertexNormalBuffer, particles[i].body);
+            }
+        }
+        }
+        
+        
+		//////////////////////////////////////////////////////END Billboard Objects//////////////////////////////////////////////////////
+		
+		//HUD
+		switch (playerLifes){
+			case 5:
+				document.getElementById("lives").innerHTML = "Lives: " + '<img src=\'images/5Lives.png\'>';
+				break;
+			case 4:
+				document.getElementById("lives").innerHTML = "Lives: " + '<img src=\'images/4Lives.png\'>';
+				break;
+			case 3:
+				document.getElementById("lives").innerHTML = "Lives: " + '<img src=\'images/3Lives.png\'>';
+				break;
+			case 2:
+				document.getElementById("lives").innerHTML = "Lives: " + '<img src=\'images/2Lives.png\'>';
+				break;
+			case 1:
+				document.getElementById("lives").innerHTML = "Lives: " + '<img src=\'images/1Life.png\'>';
+				break;	
+			case 0:
+				document.getElementById("lives").innerHTML = "Lives: ";
+				break;	
+		}		
+		document.getElementById("points").innerHTML = "Points: " + playerPoints;
+		
+    }
+	
+	 //Moviment LensFlare
+    function moveLensFlare(){
+           
+        //lensflare[0].translate = [(frogPosition.bodyPosX / lensflare[0].posX) , (frogPosition.bodyPosY / lensflare[0].posY) + 2.6, (lensflare[0].posY * lensflare[0].posZ) + 1.0 ]; 
+        //lensflare[1].translate = [((frogPosition.bodyPosX / lensflare[1].posX) / lensflare[0].posX), (frogPosition.bodyPosY / lensflare[1].posY) + 1.9, (lensflare[1].posY * lensflare[1].posZ) + 1.0 ];  
+        //lensflare[2].translate = [((frogPosition.bodyPosX / lensflare[2].posX) / lensflare[0].posX) , (frogPosition.bodyPosY / lensflare[2].posY) + 0.5, (lensflare[2].posY * lensflare[2].posZ) + 1.0]; 
+		
+		var movelens = 0.0;
+		
+		
+		if(frogPosition.bodyPosX<-2.5){
+			movelens = 1.0;
+			lensflare[1].translate = [lensflare[1].posX - movelens, lensflare[1].posY, lensflare[1].posZ]; 
+			lensflare[2].translate = [lensflare[2].posX - movelens*2, lensflare[2].posY, lensflare[2].posZ];  
+		}else if(frogPosition.bodyPosX<0.0){
+			movelens = 0.5;
+			lensflare[1].translate = [lensflare[1].posX - movelens, lensflare[1].posY, lensflare[1].posZ]; 
+			lensflare[2].translate = [lensflare[2].posX - movelens*2, lensflare[2].posY, lensflare[2].posZ];  
+		}
+		
+		
+		if(frogPosition.bodyPosX>2.5){
+			movelens = 1.0;
+			lensflare[1].translate = [lensflare[1].posX + movelens, lensflare[1].posY, lensflare[1].posZ]; 
+			lensflare[2].translate = [lensflare[2].posX + movelens*2, lensflare[2].posY, lensflare[2].posZ];  
+		}else if(frogPosition.bodyPosX>0.0){
+			movelens = 0.5;
+			lensflare[1].translate = [lensflare[1].posX + movelens, lensflare[1].posY, lensflare[1].posZ]; 
+			lensflare[2].translate = [lensflare[2].posX + movelens*2, lensflare[2].posY, lensflare[2].posZ];  
+		}
+		
+		if(frogPosition.bodyPosX==0.0){
+			lensflare[1].translate = [lensflare[1].posX, lensflare[1].posY, lensflare[1].posZ]; 
+			lensflare[2].translate = [lensflare[2].posX, lensflare[2].posY, lensflare[2].posZ];  
+		}
+    }
+    
+    function firework() {//particles draw
+        var h = 0.245;
+         
+        for(var i = 0; i < particles.length; i++){
+            if(leftCollision){
+                particles[i].x =  (particles[i].x + h * particles[i].vx ); 
+            }
+            else if(rightCollision){
+                particles[i].x =  (particles[i].x - h * particles[i].vx ); 
+            }
+            
+		 particles[i].y = (particles[i].y + h * particles[i].vy);
+		 particles[i].z = (particles[i].z - h * particles[i].vz);
+		 particles[i].vx = (particles[i].vx + h);
+		 particles[i].vy = (particles[i].vy + h);
+		 particles[i].vz = (particles[i].vy - h * particles[i].az);
+		 particles[i].life = (particles[i].life - particles[i].fade); 
+                    
+        particles[i].body.translate = [particles[i].x, particles[i].y, particles[i].z];
+        }
+    }
+
+    //Update Frog Position when a keyBoard is pressed
+    function moveFrog() {
+		if(frogDied == 0 && wonPoint==0){
+			//console.log(frogPosIncX + " /////// " + frogPosIncY);
+			frogPosition.bodyPosX += frogPosIncX;
+			frogPosition.leftEyePosX += frogPosIncX;
+			frogPosition.rightEyePosX += frogPosIncX;
+
+			frogPosition.bodyPosY += frogPosIncY;
+			frogPosition.leftEyePosY += frogPosIncY;
+			frogPosition.rightEyePosY += frogPosIncY;
+			
+			if(jumpSoundFlag==0){	
+				var jumpSound = new Audio("sound/Jump.wav");
+				jumpSound.play();
+				jumpSoundFlag = 1;
+			}
+
+			frog.body.translate = [frogPosition.bodyPosX, frogPosition.bodyPosY, frogPosition.bodyPosZ];
+			frog.leftEye.translate = [frogPosition.leftEyePosX, frogPosition.leftEyePosY, frogPosition.leftEyePosZ];
+			frog.rightEye.translate = [frogPosition.rightEyePosX, frogPosition.rightEyePosY, frogPosition.rightEyePosZ];
+		}
+    }
+	
+	//Update Frog Reflection Position when a keyBoard is pressed
+    function moveFrogReflection() {
+		if(frogDied == 0 && wonPoint==0){
+			frogReflectionPosition.bodyPosX += frogPosIncX/2;
+			frogReflectionPosition.leftEyePosX += frogPosIncX/2;
+			frogReflectionPosition.rightEyePosX += frogPosIncX/2;
+
+			frogReflectionPosition.bodyPosY += frogPosIncY/2;
+			frogReflectionPosition.leftEyePosY += frogPosIncY/2;
+			frogReflectionPosition.rightEyePosY += frogPosIncY/2;
+			
+			frogReflection.body.translate = [frogReflectionPosition.bodyPosX, frogReflectionPosition.bodyPosY, frogReflectionPosition.bodyPosZ];
+			frogReflection.leftEye.translate = [frogReflectionPosition.leftEyePosX, frogReflectionPosition.leftEyePosY, frogReflectionPosition.leftEyePosZ];
+			frogReflection.rightEye.translate = [frogReflectionPosition.rightEyePosX, frogReflectionPosition.rightEyePosY, frogReflectionPosition.rightEyePosZ];
+		}
+    }
+
+    function moveDynamicObjects() {
+        for(var i = 0; i < cars.length; i++){
+            if(cars[i].active){
+                if (cars[i].posX < endRight){ 
+                    cars[i].posX += carPosIncX;
+                } else {
+                     cars[i].active = false;
+                     cars[i].posX = -9.25;
+                     cars[i].posY = -4.1;
+                }            
+                cars[i].body.translate = [cars[i].posX, cars[i].posY, cars[i].posZ+0.2];
+                cars[i].top.translate = [cars[i].posX, cars[i].posY, cars[i].posZ+0.6];
+                cars[i].wheel1.translate = [cars[i].posX - 0.3, cars[i].posY + 0.5, cars[i].posZ];
+                cars[i].wheel2.translate = [cars[i].posX + 0.3, cars[i].posY + 0.5, cars[i].posZ];
+                cars[i].wheel3.translate = [cars[i].posX - 0.3, cars[i].posY - 0.5, cars[i].posZ];
+                cars[i].wheel4.translate = [cars[i].posX + 0.3, cars[i].posY - 0.5, cars[i].posZ];
+            }
+        }
+        
+         for(var i = 0; i < buses.length; i++){
+            if(buses[i].active){
+                if(buses[i].posX > endLeft) 
+                    buses[i].posX += busPosIncX;
+                else {
+                    buses[i].active = false;
+                    buses[i].posX = 9.25;
+                }
+            buses[i].body.translate = [buses[i].posX+0.2, buses[i].posY, buses[i].posZ+0.2];
+            buses[i].head.translate = [buses[i].posX - 0.7, buses[i].posY, buses[i].posZ+0.1];
+            buses[i].wheel1.translate = [buses[i].posX - 0.45, buses[i].posY + 0.5, buses[i].posZ];
+            buses[i].wheel2.translate = [buses[i].posX + 0.45, buses[i].posY + 0.5, buses[i].posZ];
+            buses[i].wheel3.translate = [buses[i].posX - 0.45, buses[i].posY - 0.5, buses[i].posZ];
+            buses[i].wheel4.translate = [buses[i].posX + 0.45, buses[i].posY - 0.5, buses[i].posZ];
+            }
+         }
+
+        for(var i = 0; i < turtles.length; i++){
+            if(turtles[i].active){
+                if(turtles[i].posX > endLeft) 
+                    turtles[i].posX += turtlePosIncX;
+                else {
+                     turtles[i].active = false;
+                     turtles[i].posX = 9.25;
+                }
+            turtles[i].body.translate = [turtles[i].posX, turtles[i].posY, turtles[i].posZ];
+            turtles[i].head.translate = [turtles[i].posX - 0.45, turtles[i].posY, turtles[i].posZ];
+            turtles[i].leg1.translate = [turtles[i].posX - 0.3, turtles[i].posY + 0.4, turtles[i].posZ];
+            turtles[i].leg2.translate = [turtles[i].posX + 0.3, turtles[i].posY + 0.4, turtles[i].posZ];
+            turtles[i].leg3.translate = [turtles[i].posX - 0.3, turtles[i].posY - 0.4, turtles[i].posZ];
+            turtles[i].leg4.translate = [turtles[i].posX + 0.3, turtles[i].posY - 0.4, turtles[i].posZ];
+            }
+        }
+        
+        for (var i = 0; i < timberlogs.length; i++){
+            if(timberlogs[i].active){ //6.25
+                if(timberlogs[i].posX < endRight)
+                    timberlogs[i].posX += timberlogPosIncX;
+                else {
+                    timberlogs[i].active = false;
+                    timberlogs[i].posX = -9.25;
+                     }
+                timberlogs[i].body.translate = [timberlogs[i].posX, timberlogs[i].posY - 0.4, timberlogs[i].posZ];
+            }
+        }      
+    }
+
+    //Puts the frog in he's initial position
+	function killFrog(type){
+		frogDied = 1;
+		unlockDownMove = 0;
+		unlockTopMove = 0;
+		unlockRightMove = 0;
+		unlockLeftMove = 0;  
+		
+		counterOne = 0;
+	}  
+    
+	//Verify if there is a collision between the frog and an the water
+	function verifyWaterCollision(){
+		if(!aboveAlly && !aboveStencilObject){
+			// 0.75 and 4.75 are the river banks
+            if(frogPosition.bodyPosY > 0.75 && frogPosition.bodyPosY < 7.0){ 
+				    if(frogSplash==0){
+						var splash = new Audio("sound/splash.wav");
+						splash.play();
+						frogSplash = 1;
+					}
+					killFrog("waterDead");        
+			}
+		}
+		return frogSplash;
+	}
+   
+    //Verify if there is a collision between the frog and an enemy
+	function verifyEnemyCollision(objects){
+		var objectLimitX = 0.0;
+		var objectLimitY = 0.0;
+				
+		for(var i = 0; i < objects.length; i++){
+            for(var j = 0; j < objects[i].length; j++){
+                if(objects[i][j] instanceof Car){
+				    objectLimitX = 0.9;
+				    objectLimitY = 1.0;
+                    
+			     }else if(objects[i][j] instanceof Bus){//case that the object is the bus
+				    objectLimitX = 1.2;
+				    objectLimitY = 1.0;
+                 }
+					
+                //check if the limits of the enemy match with frogs position
+                if((frogPosition.bodyPosX < objects[i][j].posX + objectLimitX && frogPosition.bodyPosX > objects[i][j].posX - objectLimitX) &&
+                (frogPosition.bodyPosY < objects[i][j].posY + objectLimitY && frogPosition.bodyPosY > objects[i][j].posY - objectLimitY)){
+                    if(frogHit==0){
+						var hit = new Audio("sound/Hit.wav");
+						hit.play();
+						frogHit=1;
+					}
+                    if(objects[i][j] instanceof Car){
+                        leftCollision = 1;
+                    }
+                    else if(objects[i][j] instanceof Bus){
+                        rightCollision = 1;
+                    }
+					killFrog("enemyDead");
+                }
+            }
+        }
+    }
+    
+    //Change the position of the frog when he is above an ally
+	function rideAlly(object){
+		if(frogDied == 0){
+			frogPosition.bodyPosX = object.posX;
+			frogPosition.leftEyePosX = object.posX + 0.2;
+			frogPosition.rightEyePosX = object.posX - 0.2;
+
+			frog.body.translate = [frogPosition.bodyPosX, frogPosition.bodyPosY, frogPosition.bodyPosZ];
+			frog.leftEye.translate = [frogPosition.leftEyePosX, frogPosition.leftEyePosY, frogPosition.leftEyePosZ];
+			frog.rightEye.translate = [frogPosition.rightEyePosX, frogPosition.rightEyePosY, frogPosition.rightEyePosZ];
+			
+			//Reflection
+			frogReflectionPosition.bodyPosX = frogPosition.bodyPosX;
+			frogReflectionPosition.leftEyePosX = frogPosition.leftEyePosX;
+			frogReflectionPosition.rightEyePosX = frogPosition.rightEyePosX;
+
+			frogReflection.body.translate = [frogReflectionPosition.bodyPosX, frogReflectionPosition.bodyPosY, frogReflectionPosition.bodyPosZ];
+			frogReflection.leftEye.translate = [frogReflectionPosition.leftEyePosX, frogReflectionPosition.leftEyePosY, frogReflectionPosition.leftEyePosZ];
+			frogReflection.rightEye.translate = [frogReflectionPosition.rightEyePosX, frogReflectionPosition.rightEyePosY, frogReflectionPosition.rightEyePosZ];
+			
+			if (frogPosition.bodyPosX <= -5.0 || frogPosition.bodyPosX >= 5.0){
+				if(frogSplash==0){
+					var splash = new Audio("sound/splash.wav");
+					splash.play();
+					frogSplash = 1;
+				}
+				killFrog("waterDead");
+			}
+		}
+	}
+    
+    //Verify if there is a collision between the frog and an ally
+	function verifyAllyCollision(objects){
+		var objectLimitX = 0.0;
+		var objectTopLimitY = 0.0;
+		var objectDownLimitY = 0.0;
+		
+        for(var i = 0; i < objects.length; i++){
+            for(var j = 0; j < objects[i].length; j++){		
+                if(objects[i][j] instanceof Timberlog){//case that the object is the timberlog                    
+                    objectLimitX = 0.9;
+                    objectTopLimitY = 0.5;
+                    objectDownLimitY = 1.45;
+                }else if(objects[i][j] instanceof Turtle){//case that the object is the turtle
+                    objectLimitX = 0.9;
+                    objectTopLimitY = 1.0;
+                    objectDownLimitY = 1.2;
+                }else if(objects[i][j].id >= 16.1 && objects[i][j].id <= 16.5){//case that the object is one of the stencil cubes
+                    objectLimitX = 0.9;
+                    objectTopLimitY = 1.0;
+                    objectDownLimitY = 1.2;
+                }
+			
+				if(objects[i][j].id == 8 || objects[i][j].id == 9){
+					//check if the limits of the ally match with frogs position
+					if((frogPosition.bodyPosX < objects[i][j].posX + objectLimitX && frogPosition.bodyPosX > objects[i][j].posX - objectLimitX) &&
+					(frogPosition.bodyPosY < objects[i][j].posY + objectTopLimitY && frogPosition.bodyPosY > objects[i][j].posY - objectDownLimitY)){
+						aboveAlly = true;
+						rideAlly(objects[i][j]);
+						return;
+					}
+				}else if(objects[i][j].id >= 16.1 && objects[i][j].id <= 16.5){
+					if((frogPosition.bodyPosX <= objects[i][j].posX + objectLimitX && frogPosition.bodyPosX >= objects[i][j].posX - objectLimitX) &&
+						(frogPosition.bodyPosY <= objects[i][j].posY + objectTopLimitY && frogPosition.bodyPosY >= objects[i][j].posY - objectDownLimitY)){
+							winPoint();
+							return;
+					}
+				}
+            }
+		}
+		
+		aboveAlly = false;
+		//aboveStencilObject = false;
+	}
+    
+	function setDayNightMode(){
+		if(nightMode==0){
+				ambientColorR = 0.9;
+				ambientColorG = 0.9;
+				ambientColorB = 0.9;
+				pointLightingSpecularColorR = 0.0;
+				pointLightingSpecularColorG = 0.0;
+				pointLightingSpecularColorB = 0.0;
+				pointLightingDiffuseColorR = 0.0;
+				pointLightingDiffuseColorG = 0.0;
+				pointLightingDiffuseColorB = 0.0;
+			}else if(nightMode==1){
+				ambientColorR = 0.005;
+				ambientColorG = 0.005;
+				ambientColorB = 0.005;
+				pointLightingLocationX = frogPosition.bodyPosX;
+				pointLightingLocationY = frogPosition.bodyPosY;
+				pointLightingLocationZ = frogPosition.bodyPosZ+2;
+				pointLightingSpecularColorR = 0.8;
+				pointLightingSpecularColorG = 0.8;
+				pointLightingSpecularColorB = 0.8;
+				pointLightingDiffuseColorR = 0.8;
+				pointLightingDiffuseColorG = 0.8;
+				pointLightingDiffuseColorB = 0.8;
+			}
+	}
+	
+	
+	var enemyAhead = 0;
+	var enemyBehind = 0;
+	var enemyLeft = 0;
+	var enemyRight = 0;
+	
+	var allyAhead = 0;
+	var allyBehind = 0;
+	var allyLeft = 0;
+	var allyRight = 0;
+	
+	function makeMove(objects, objects2){
+		/*Enemy Interaction*/		
+		for(var i = 0; i < objects.length; i++){
+            for(var j = 0; j < objects[i].length; j++){
+                if(objects[i][j] instanceof Car){
+				    objectLimitX = 1.1;
+				    objectLimitY = 1.3;
+                    
+			     }else if(objects[i][j] instanceof Bus){//case that the object is the bus
+				    objectLimitX = 1.1;
+				    objectLimitY = 1.3;
+                 }
+				
+                //check if the limits of the enemy match with frogs position
+                if((frogPosition.bodyPosY+1 < objects[i][j].posY + objectLimitY && frogPosition.bodyPosY+1 > objects[i][j].posY - objectLimitY) && (frogPosition.bodyPosX < objects[i][j].posX + objectLimitX && frogPosition.bodyPosX > objects[i][j].posX - objectLimitX)){
+					enemyAhead = 1;
+					break;
+				}else if((frogPosition.bodyPosY-1 < objects[i][j].posY + objectLimitY && frogPosition.bodyPosY-1 > objects[i][j].posY - objectLimitY) && (frogPosition.bodyPosX < objects[i][j].posX + objectLimitX && frogPosition.bodyPosX > objects[i][j].posX - objectLimitX)){
+					enemyBehind = 1;
+					break;
+				}else if((frogPosition.bodyPosX-1 > objects[i][j].posX + objectLimitX && frogPosition.bodyPosX-1 < objects[i][j].posX - objectLimitX && frogPosition.bodyPosY == objects[i][j].posY)){
+					enemyLeft = 1;
+					break;
+				} else if((frogPosition.bodyPosX+1 < objects[i][j].posX + objectLimitX && frogPosition.bodyPosX+1 > objects[i][j].posX - objectLimitX) && frogPosition.bodyPosY == objects[i][j].posY){
+					enemyRight = 1;
+					break;
+				}
+				
+			}
+		}
+		
+		/*Ally Interaction*/
+		for(var i = 0; i < objects2.length; i++){
+            for(var j = 0; j < objects2[i].length; j++){
+                if(objects2[i][j] instanceof Timberlog){//case that the object is the timberlog                    
+                    objectLimitX = 0.9;
+                    objectTopLimitY = 0.5;
+                    objectDownLimitY = 1.45;
+                }else if(objects2[i][j] instanceof Turtle){//case that the object is the turtle
+                    objectLimitX = 0.9;
+                    objectTopLimitY = 1.0;
+                    objectDownLimitY = 1.2;
+                }else if(objects2[i][j].id >= 16.1 && objects2[i][j].id <= 16.5){//case that the object is one of the stencil cubes
+                    objectLimitX = 0.9;
+                    objectTopLimitY = 1.0;
+                    objectDownLimitY = 1.2;
+                }
+				
+                //check if the limits of the enemy match with frogs position
+                if((frogPosition.bodyPosY+2.0 < objects2[i][j].posY + objectLimitY && frogPosition.bodyPosY+2.0 > objects2[i][j].posY - objectLimitY) && (frogPosition.bodyPosX < objects2[i][j].posX + objectLimitX && frogPosition.bodyPosX > objects2[i][j].posX - objectLimitX)){
+					allyAhead = 1;
+					break;
+				}else if((frogPosition.bodyPosY-2.0 < objects2[i][j].posY + objectLimitY && frogPosition.bodyPosY-2.0 > objects2[i][j].posY - objectLimitY) && (frogPosition.bodyPosX < objects2[i][j].posX + objectLimitX && frogPosition.bodyPosX > objects2[i][j].posX - objectLimitX)){
+					allyBehind = 1;
+					break;
+				}else if((frogPosition.bodyPosX-2.0 > objects2[i][j].posX + objectLimitX && frogPosition.bodyPosX-2.0 < objects2[i][j].posX - objectLimitX && frogPosition.bodyPosY == objects2[i][j].posY)){
+					allyLeft = 1;
+					break;
+				} else if((frogPosition.bodyPosX+2.0 < objects2[i][j].posX + objectLimitX && frogPosition.bodyPosX+2.0 > objects2[i][j].posX - objectLimitX) && frogPosition.bodyPosY == objects2[i][j].posY){
+					allyRight = 1;
+					break;
+				}
+				
+			}
+		}
+		
+			//console.log("allyAhead - " + allyAhead);
+			//console.log("allyBehind - " + allyBehind);
+			//console.log("allyRight - " + allyRight);
+			//console.log("allyLeft - " + allyLeft);
+			
+			//console.log(frogPosition.bodyPosY);
+			
+			if((frogPosition.bodyPosY>=-9 && frogPosition.bodyPosY<-6)){
+				if(enemyLeft == 0 && unlockRightMove == 1 && enemyRight==1){
+					frogPosIncY = 0.0;
+					frogPosIncX = -1.0;
+					moveFrog();
+				} else if(enemyAhead == 0 && unlockUpMove == 1){
+					frogPosIncY = 1.0;
+					frogPosIncX = 0.0;
+					moveFrog();
+				} else if(enemyRight==1){
+					frogPosIncX = 0.0;
+					frogPosIncY = -1.0;
+					moveFrog();
+				}
+			
+			}else if((frogPosition.bodyPosY>-6 && frogPosition.bodyPosY<-4)){
+				if(enemyRight == 0 && unlockRightMove == 1 && enemyLeft==1){
+					frogPosIncY = 0.0;
+					frogPosIncX = 1.0;
+					moveFrog();
+				} else if(enemyAhead == 0 && unlockUpMove == 1){
+					frogPosIncY = 1.0;
+					frogPosIncX = 0.0;
+					moveFrog();
+				}else if(enemyRight==1){
+					frogPosIncX = 0.0;
+					frogPosIncY = -1.0;
+					moveFrog();
+				}
+			}else if(frogPosition.bodyPosY > -1 && frogPosition.bodyPosY < 1){
+				if(allyAhead == 1 && unlockUpMove == 1){
+					frogPosIncY = 1.0;
+					frogPosIncX = 0.0;
+					moveFrog();
+				}
+			}else if(frogPosition.bodyPosY > 1 && frogPosition.bodyPosY < 5){
+				if(allyAhead == 1 && unlockUpMove == 1){
+					frogPosIncY = 1.0;
+					frogPosIncX = 0.0;
+					moveFrog();
+				}else if(frogPosition.bodyPosX<-4.50){
+					frogPosIncY = -1.0;
+					frogPosIncX = 0.0;
+					moveFrog();
+				}
+			}else if(frogPosition.bodyPosY >= 5 && frogSplash==0){
+					winPoint();
+			}else if(enemyAhead == 0 && unlockUpMove == 1){
+				frogPosIncY = 1.0;
+				frogPosIncX = 0.0;
+				moveFrog();
+			}
+			
+		enemyAhead = 0;
+		enemyBehind = 0;
+		enemyLeft = 0;
+		enemyRight = 0;
+		
+		allyAhead = 0;
+		allyBehind = 0;
+		allyLeft = 0;
+		allyRight = 0;		
+	}
+	
+	var animateFrog = 0;
+    function animate() {
+        var timeNow = new Date().getTime();
+		var elapsed = timeNow - lastTime;
+		
+			CameraPosX = frogPosition.bodyPosX;
+			CameraPosY = frogPosition.bodyPosY - 2;
+			CameraPosZ = frogPosition.bodyPosZ + 2;
+			
+		if(mobileDevice==0){	
+			if(yawRate==0)
+				yaw = yawRate;
+			else if(yaw < 40 & yaw > -40)
+				yaw += yawRate;
+				pitch += pitchRate * elapsed;
+		}
+
+		if (lastTime != 0) {
+            var elapsed = timeNow - lastTime;	
+			
+			
+			if(mobileDevice == 1 && demoMode == 1){
+				if(animateFrog==20)
+					animateFrog = 0;
+				else
+					animateFrog++;
+			
+				if(animateFrog == 1){
+					makeMove(enemyObjects, allyObjects);
+				}
+			} else if(mobileDevice == 0){
+				moveFrog();
+				//Frog Reflection
+				moveFrogReflection();
+			}
+			
+            moveDynamicObjects();
+            verifyAllyCollision(allyObjects);
+			verifyWaterCollision();
+			verifyEnemyCollision(enemyObjects);
+			moveLensFlare();
+        }
+        lastTime = timeNow;
+		
+		//Lights
+		setDayNightMode();
+		
+		
+		if(mobileDevice == 1){
+			if (window.DeviceMotionEvent==undefined) {
+				alert("DeviceMotionEvent=undefined");
+			}else {
+				window.ondevicemotion = function(event) {
+					ax = event.accelerationIncludingGravity.x
+					ay = event.accelerationIncludingGravity.y
+					az = event.accelerationIncludingGravity.z
+					rotation = event.rotationRate;
+					if (rotation != null) {
+						arAlpha = Math.round(rotation.alpha);
+						arBeta = Math.round(rotation.beta);
+						arGamma = Math.round(rotation.gamma);
+					}
+				}
+				window.ondeviceorientation = function(event) {
+					alpha = Math.round(event.alpha);
+					beta = Math.round(event.beta);
+					gamma = Math.round(event.gamma);
+					
+					pitch = -gamma - 65;
+					yaw = alpha + 357;
+				}
+			}
+		}
+		
+
+		if(mobileDevice == 1 && demoMode == 1){
+			if(timberlogPosIncX <= 0.1)
+				timberlogPosIncX +=0.0000025;
+			if(timberlogPosIncX >= -0.35)
+				turtlePosIncX -=0.0000005;
+			if(busPosIncX >= -0.18)
+				busPosIncX -= 0.000005;
+			if(carPosIncX <= 0.2)
+				carPosIncX += 0.000005;
+		}else{ 
+			if(timberlogPosIncX <= 0.1)
+				timberlogPosIncX +=0.000005;
+			if(timberlogPosIncX >= -0.35)
+				turtlePosIncX -=0.000001;
+			if(busPosIncX >= -0.18)
+				busPosIncX -= 0.00001;
+			if(carPosIncX <= 0.2)
+				carPosIncX += 0.00001;
+		}
+		
+    }
+	
+    function rightEye(){
+        mat4.identity(pMatrix);
+
+        //push e pop?
+        
+        hdiv2 = 75 * Math.tan(45/ 2); // aperture in radians
+        aspectratio = (gl.viewportWidth / gl.viewportHeight);
+        
+        //gl.viewport(0.0,0.0,gl.viewportWidth/2.0,gl.viewportHeight);
+        
+        gl.viewport(gl.viewportWidth/2.0,0.0,gl.viewportWidth/2.0,gl.viewportHeight);
+        
+        top = hdiv2;
+        bottom = -hdiv2;
+        
+        left = - aspectratio * hdiv2;
+        right = aspectratio * hdiv2;
+        
+       // mat4.frustum(left,right,bottom,top,0.1,1000,pMatrix);//????
+        
+       
+        
+        leftSide = 0;
+        rightSide = 1;
+          
+    }
+    
+    function leftEye(){
+        mat4.identity(pMatrix);
+        
+        gl.viewport(0.0,0.0,gl.viewportWidth/2.0,gl.viewportHeight);
+                //gl.viewport(gl.viewportWidth/2.0,0.0,gl.viewportWidth/2.0,gl.viewportHeight);
+
+        
+        hdiv2 = 75 * Math.tan(45/ 2); // aperture in radians
+        aspectratio = (gl.viewportWidth / gl.viewportHeight);
+
+        
+        top = hdiv2;
+        bottom = -hdiv2;
+        
+        
+         left = - aspectratio * hdiv2 + 0.5 * 40 * 75/100;
+         right = aspectratio * hdiv2 + 0.5 * 40 * 75/100;
+        
+        //mat4.frustum(left,right,bottom,top,0.1, 1000.0, pMatrix);//????
+        rightSide = 0;
+
+        leftSide = 1;
+        
+
+    
+    }
+    
+    function tick() {
+        requestAnimFrame(tick);
+		
+		if(mobileDevice == 0)//////////////////////////////////////////////////////////////////////////////////////
+			handleKeys();
+        
+		if(mobileDevice==1 && demoMode == 0){
+			mobileControls();
+		}
+		//drawScene();
+		
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		
+		if(mobileDevice == 1 && demoMode == 1){
+			leftEye();      
+			drawScene();
+			if(document.getElementById('menuMobile').style.visibility == "hidden")
+				animate(); 
+			rightEye();      
+			drawScene();
+			if(document.getElementById('menuMobile').style.visibility == "hidden")
+				animate(); 
+				
+		}else if(mobileDevice == 0 || (mobileDevice==1 && demoMode == 0)){
+			
+			gl.viewport(0.0,0.0,gl.viewportWidth,gl.viewportHeight);
+			drawScene();
+			if(document.getElementById('menu').style.visibility == "hidden")
+				animate(); 
+		}
+	
+		
+		//if(document.getElementById('menu').style.visibility == "hidden")
+		//	animate();       
+    }
+
+	function newGame(){
+		document.getElementById('gameOver').style.visibility = "hidden";
+		playerLifes = 5;
+		playerPoints = 0;
+		gameOverFlag = 0;
+		newFrogLife();
+	}
+	
+	function playGame(){
+		document.getElementById('menu').style.visibility = "hidden";
+		document.getElementById('menuMobile').style.visibility = "hidden";
+		document.getElementById('lives').style.visibility = "visible";
+		document.getElementById('points').style.visibility = "visible";
+		
+		if(mobileDevice==1){
+			document.getElementById('upMobileControl').style.visibility = "visible";
+			document.getElementById('downMobileControl').style.visibility = "visible";
+			document.getElementById('leftMobileControl').style.visibility = "visible";
+			document.getElementById('rightMobileControl').style.visibility = "visible";
+		}
+	}
+
+	function playDemo(){
+		document.getElementById('menu').style.visibility = "hidden";
+		document.getElementById('menuMobile').style.visibility = "hidden";
+		document.getElementById('lives').style.visibility = "visible";
+		document.getElementById('points').style.visibility = "visible";
+		
+		demoMode = 1;
+	}
+	
+    function webGLStart() {
+		
+		if( /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ) {
+			mobileDevice = 1;
+		}
+			
+		if(mobileDevice==0)
+			document.getElementById('menu').style.visibility = "visible";
+		else if(mobileDevice==1)
+			document.getElementById('menuMobile').style.visibility = "visible";	
+		
+        var canvas = document.getElementById("frogger");
+		canvas.width  = window.innerWidth;
+		canvas.height = window.innerHeight;
+		
+		//alert("width" + canvas.width);
+		//alert("height" + canvas.height);
+		
+        initGL(canvas);
+        initShaders();
+        initBuffers();
+        initTexture();
+
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+
+        document.onkeydown = handleKeyDown;
+        document.onkeyup = handleKeyUp;
+  
+        StartTimer(carRandom, 1000);
+        StartTimer(timberlogRandom, 1500);
+        StartTimer(turtleRandom, 3000);
+        StartTimer(busRandom, 1500);
+        StartTimer(firework, 100);
+		
+        tick();
+    }
+
+</script>
+
+</head>
+
+<body onload="webGLStart();">
+	
+	<div id="menu">
+		<img id="image" src="images/froggerHeader.png" alt="Frogger"></img>
+		<br>
+		<div id="play" onclick="playGame();">
+            <img src="images/playButton.png" alt="Play Button" >
+        </div>
+		
+		 <img id="keys" src="images/keys.png" alt="Keys" >
+	</div>
+	
+	<div id="menuMobile">
+		<img id="imageMobile" src="images/froggerHeader.png"></img>
+		<br>
+		<div id="playMobile" onclick="playGame();">
+            <img src="images/playButton.png">
+        </div>
+		
+		<div id="demoMobile" onclick="playDemo();">
+            <img src="images/demoButton.png">
+        </div>
+	</div>
+	
+	<div id="controlsMobile">
+		<img id="upMobileControl" src="images/upMobileControl.png"></img>
+		<img id="downMobileControl" src="images/downMobileControl.png"></img>
+		<img id="leftMobileControl" src="images/leftMobileControl.png"></img>
+		<img id="rightMobileControl" src="images/rightMobileControl.png"></img>
+	</div>
+	
+	
+	<div id="gameOver">
+		<img id ="gameOverImage" src="images/gameOver2.png"></img>
+		
+		<div id="playAgain" onclick="newGame();">
+			<img src="images/playAgain.png"></img>
+		</div>
+	</div>
+	
+    <canvas id="frogger" style="border: none;" ></canvas>
+	
+	<div id="lives"></div>
+	<br/>
+	<div id="points"></div>
+
+	
+</body>
+
+</html>
